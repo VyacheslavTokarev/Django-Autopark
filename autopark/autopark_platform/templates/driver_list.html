@@ -1,0 +1,105 @@
+<!-- templates/driver_list.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Автопарк - Водители</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Боковое меню -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>Автопарк</h2>
+            </div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn active">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+
+        <!-- Основной контент -->
+        <main class="content">
+            <div class="page-header">
+                <h1>Водители</h1>
+                <div class="action-bar">
+                    <input type="text" id="searchInput" placeholder="Поиск по ФИО, удостоверению, телефону, email..." class="search-input" value="{{ search_query|default:'' }}">
+                    <select id="assignmentFilter" class="status-filter">
+                        <option value="">Все водители</option>
+                        <option value="assigned" {% if assignment_filter == 'assigned' %}selected{% endif %}>Назначен на ТС</option>
+                        <option value="free" {% if assignment_filter == 'free' %}selected{% endif %}>Свободен (без ТС)</option>
+                    </select>
+                    <a href="{% url 'driver_add' %}" class="btn-add">+ Добавить водителя</a>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>ФИО</th>
+                            <th>Вод. удостоверение</th>
+                            <th>Телефон</th>
+                            <th>Email</th>
+                            <th>Стаж (лет)</th>
+                            <th>Назначенное ТС</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for driver in drivers %}
+                        <tr>
+                            <td>{{ driver.id }}</td>
+                            <td>{{ driver.full_name }}</td>
+                            <td>{{ driver.license_number }}</td>
+                            <td>{{ driver.phone_number }}</td>
+                            <td>{{ driver.email }}</td>
+                            <td>{{ driver.experience_years|default:"—" }}</td>
+                            <td>
+                                {% if driver.vehicle %}
+                                    <span class="status-badge status-assigned">{{ driver.vehicle.brand }} {{ driver.vehicle.model }} ({{ driver.vehicle.license_plate }})</span>
+                                {% else %}
+                                    <span class="status-badge status-free-driver">Свободен</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="empty-row">Нет водителей, соответствующих критериям</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const assignmentFilter = document.getElementById('assignmentFilter');
+
+        function updateUrl() {
+            const search = searchInput.value.trim();
+            const assignment = assignmentFilter.value;
+            let url = window.location.pathname + '?';
+            if (search) url += `search=${encodeURIComponent(search)}&`;
+            if (assignment) url += `assignment=${encodeURIComponent(assignment)}&`;
+            if (url.endsWith('&') || url.endsWith('?')) url = url.slice(0, -1);
+            window.location.href = url || window.location.pathname;
+        }
+
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') updateUrl();
+        });
+        assignmentFilter.addEventListener('change', updateUrl);
+    </script>
+</body>
+</html>

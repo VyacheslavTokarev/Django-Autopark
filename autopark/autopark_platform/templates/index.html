@@ -1,0 +1,236 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Автопарк - Панель управления</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <!-- Добавьте шрифты при необходимости -->
+</head>
+<body>
+    <div class="app-container">
+        <!-- Боковое меню (вкладки) -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>Автопарк</h2>
+            </div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn active">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+
+        <!-- Основной контент -->
+        <main class="content">
+            <!-- Вкладка: Дашборд (активна по умолчанию) -->
+            <div id="dashboard" class="tab-pane active">
+                <h1>Панель управления автопарком</h1>
+
+                <!-- Статистика по ТС -->
+                <section class="stats-section">
+                    <h2>Статистика по ТС</h2>
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <span class="stat-label">Общее количество</span>
+                            <span class="stat-value">{{ total_vehicles }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Свободные</span>
+                            <span class="stat-value">{{ free_vehicles }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">На ТО</span>
+                            <span class="stat-value">{{ maintenance_vehicles }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">В рейсе</span>
+                            <span class="stat-value">{{ on_route_vehicles }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Статистика по водителям -->
+                <section class="stats-section">
+                    <h2>Статистика по водителям</h2>
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <span class="stat-label">Общее количество</span>
+                            <span class="stat-value">{{ total_drivers }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Свободные (без маршрута)</span>
+                            <span class="stat-value">{{ free_drivers }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Статистика по маршрутам -->
+                <section class="stats-section">
+                    <h2>Статистика по маршрутам</h2>
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <span class="stat-label">Всего маршрутов</span>
+                            <span class="stat-value">{{ total_routes }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Выполняющиеся</span>
+                            <span class="stat-value">{{ ongoing_routes }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Завершённые</span>
+                            <span class="stat-value">{{ completed_routes }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Самый длинный (км)</span>
+                            <span class="stat-value">{{ longest_route_distance|default:"—" }}</span>
+                        </div>
+                    </div>
+
+                    <h3>Ближайшие маршруты</h3>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата и время отправления</th>
+                                    <th>ТС (госномер)</th>
+                                    <th>Уровень топлива (л)</th>
+                                    <th>Необходимость ТО</th>
+                                    <th>Водитель</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for route in upcoming_routes %}
+                                <tr>
+                                    <td>{{ route.departure_datetime }}</td>
+                                    <td>{{ route.vehicle_plate }}</td>
+                                    <td>{{ route.fuel_level|default:"—" }}</td>
+                                    <td>{{ route.to_needed|yesno:"Да,Нет" }}</td>
+                                    <td>{{ route.driver_name|default:"Не назначен" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="5">Нет запланированных маршрутов</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Статистика по заправкам -->
+                <section class="stats-section">
+                    <h2>Статистика по заправкам</h2>
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <span class="stat-label">Общая стоимость</span>
+                            <span class="stat-value">{{ total_fuel_cost|default:"0" }} ₽</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Кол-во заправок</span>
+                            <span class="stat-value">{{ total_fuel_logs }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Последняя цена за литр</span>
+                            <span class="stat-value">{{ last_fuel_price|default:"—" }} ₽</span>
+                        </div>
+                    </div>
+                    <h3>ТС с низким уровнем топлива (менее 15 л)</h3>
+                    <ul class="simple-list">
+                        {% for vehicle in low_fuel_vehicles %}
+                        <li>{{ vehicle.brand }} {{ vehicle.model }} ({{ vehicle.license_plate }}) — {{ vehicle.fuel_level }} л</li>
+                        {% empty %}
+                        <li>Нет ТС с низким уровнем топлива</li>
+                        {% endfor %}
+                    </ul>
+                </section>
+
+                <!-- Статистика по ТО -->
+                <section class="stats-section">
+                    <h2>Статистика по ТО</h2>
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <span class="stat-label">ТС, требующих ТО</span>
+                            <span class="stat-value">{{ vehicles_due_maintenance_count }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Всего потрачено на ТО</span>
+                            <span class="stat-value">{{ total_maintenance_cost|default:"0" }} ₽</span>
+                        </div>
+                    </div>
+                    <div class="two-columns">
+                        <div>
+                            <h3>Скоро ТО по дате</h3>
+                            <ul class="simple-list">
+                                {% for item in maintenance_due_by_date %}
+                                <li>{{ item.vehicle_name }} — {{ item.next_maintenance_date }}</li>
+                                {% empty %}
+                                <li>Нет данных</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        <div>
+                            <h3>Скоро ТО по пробегу</h3>
+                            <ul class="simple-list">
+                                {% for item in maintenance_due_by_mileage %}
+                                <li>{{ item.vehicle_name }} — осталось {{ item.mileage_left }} км</li>
+                                {% empty %}
+                                <li>Нет данных</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Остальные вкладки (пустые заготовки) -->
+            <div id="vehicles" class="tab-pane">
+                <h2>Весь транспорт</h2>
+                <p>Здесь будет таблица/список всех ТС. (Разработка в процессе)</p>
+            </div>
+            <div id="drivers" class="tab-pane">
+                <h2>Водители</h2>
+                <p>Список водителей и информация о них.</p>
+            </div>
+            <div id="routes" class="tab-pane">
+                <h2>Маршруты</h2>
+                <p>Управление маршрутами.</p>
+            </div>
+            <div id="fuel" class="tab-pane">
+                <h2>Информация о заправках</h2>
+                <p>Журнал заправок.</p>
+            </div>
+            <div id="maintenance" class="tab-pane">
+                <h2>Техническое обслуживание</h2>
+                <p>Планы и история ТО.</p>
+            </div>
+            <div id="telemetry" class="tab-pane">
+                <h2>Телематика</h2>
+                <p>Данные с датчиков в реальном времени.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Простейший скрипт для переключения вкладок (без бэкенда)
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const panes = document.querySelectorAll('.tab-pane');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.getAttribute('data-tab');
+                // Убираем активные классы
+                tabBtns.forEach(b => b.classList.remove('active'));
+                panes.forEach(p => p.classList.remove('active'));
+                // Активируем текущие
+                btn.classList.add('active');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

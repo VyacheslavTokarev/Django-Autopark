@@ -1,0 +1,125 @@
+<!-- templates/refuel_list.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Автопарк - Информация о заправках</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Боковое меню -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>Автопарк</h2>
+            </div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn active">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+
+        <!-- Основной контент -->
+        <main class="content">
+            <div class="page-header">
+                <h1>Журнал заправок</h1>
+                <div class="action-bar">
+                    <!-- Поле поиска -->
+                    <input type="text" id="searchInput" placeholder="Поиск по госномеру, марке, модели..." class="search-input" value="{{ search_query|default:'' }}">
+
+                    <!-- Фильтр по ТС -->
+                    <select id="vehicleFilter" class="status-filter">
+                        <option value="">Все ТС</option>
+                        {% for vehicle in vehicles_for_filter %}
+                            <option value="{{ vehicle.id }}" {% if vehicle_filter == vehicle.id|stringformat:"i" %}selected{% endif %}>
+                                {{ vehicle.brand }} {{ vehicle.model }} ({{ vehicle.license_plate }})
+                            </option>
+                        {% endfor %}
+                    </select>
+
+                    <!-- Сортировка по цене за литр -->
+                    <select id="sortPrice" class="status-filter">
+                        <option value="price_asc" {% if sort_by == 'price_asc' %}selected{% endif %}>Цена за литр (по возрастанию)</option>
+                        <option value="price_desc" {% if sort_by == 'price_desc' %}selected{% endif %}>Цена за литр (по убыванию)</option>
+                    </select>
+
+                    <a href="{% url 'refuel_add' %}" class="btn-add">+ Добавить заправку</a>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Дата и время заправки</th>
+                            <th>Объем (л)</th>
+                            <th>Цена за литр (₽)</th>
+                            <th>Стоимость заправки (₽)</th>
+                            <th>Топливо после заправки (л)</th>
+                            <th>Пробег на момент заправки (км)</th>
+                            <th>Транспортное средство</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for refuel in refuels %}
+                        <tr>
+                            <td>{{ refuel.id }}</td>
+                            <td>{{ refuel.datetime }}</td>
+                            <td>{{ refuel.volume_liters }}</td>
+                            <td>{{ refuel.price_per_liter }}</td>
+                            <td><strong>{{ refuel.total_cost|default:"—" }}</strong></td>
+                            <td>{{ refuel.fuel_level_after }}</td>
+                            <td>{{ refuel.mileage_at_refuel }}</td>
+                            <td>
+                                {% if refuel.vehicle %}
+                                    {{ refuel.vehicle.brand }} {{ refuel.vehicle.model }}<br>
+                                    <small>{{ refuel.vehicle.license_plate }}</small>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="empty-row">Нет записей о заправках, соответствующих критериям</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const vehicleFilter = document.getElementById('vehicleFilter');
+        const sortPrice = document.getElementById('sortPrice');
+
+        function updateUrl() {
+            const search = searchInput.value.trim();
+            const vehicle = vehicleFilter.value;
+            const sort = sortPrice.value;
+            let url = window.location.pathname + '?';
+            if (search) url += `search=${encodeURIComponent(search)}&`;
+            if (vehicle) url += `vehicle_id=${encodeURIComponent(vehicle)}&`;
+            if (sort) url += `sort_by=${encodeURIComponent(sort)}&`;
+            if (url.endsWith('&') || url.endsWith('?')) url = url.slice(0, -1);
+            window.location.href = url || window.location.pathname;
+        }
+
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') updateUrl();
+        });
+        vehicleFilter.addEventListener('change', updateUrl);
+        sortPrice.addEventListener('change', updateUrl);
+    </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!-- templates/driver_add.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Добавить водителя</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo"><h2>Автопарк</h2></div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn active">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+        <main class="content">
+            <div class="form-container">
+                <h1>Новый водитель</h1>
+                <form method="post" id="driverForm">
+                    {% csrf_token %}
+                    <div class="form-grid">
+                        <div class="form-column">
+                            <div class="field-group">
+                                <label>ФИО:*</label>
+                                <input type="text" name="full_name" required>
+                            </div>
+                            <div class="field-group">
+                                <label>Водительское удостоверение:*</label>
+                                <input type="text" name="license_number" required>
+                            </div>
+                            <div class="field-group">
+                                <label>Номер телефона:*</label>
+                                <input type="tel" name="phone_number" required>
+                            </div>
+                            <div class="field-group">
+                                <label>Электронная почта:*</label>
+                                <input type="email" name="email" required>
+                            </div>
+                            <div class="field-group">
+                                <label>Стаж (лет):</label>
+                                <input type="number" step="1" min="0" name="experience_years">
+                            </div>
+                            <div class="field-group">
+                                <label>Назначенное ТС (один водитель → одно ТС):</label>
+                                <select name="vehicle_id">
+                                    <option value="">-- Не назначено --</option>
+                                    {% for vehicle in vehicles %}
+                                        <option value="{{ vehicle.id }}">
+                                            {{ vehicle.brand }} {{ vehicle.model }} ({{ vehicle.license_plate }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn-add">Сохранить водителя</button>
+                        <a href="{% url 'driver_list' %}" class="btn-cancel">Отмена</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+    <script src="{% static 'js/driver_add.js' %}"></script>
+</body>
+</html>

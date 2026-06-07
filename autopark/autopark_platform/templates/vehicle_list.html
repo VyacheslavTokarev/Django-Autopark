@@ -1,0 +1,123 @@
+<!-- templates/vehicle_list.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Автопарк - Весь транспорт</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Боковое меню (такое же как в index.html, но активна вкладка "Весь транспорт") -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>Автопарк</h2>
+            </div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn active">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+
+        <!-- Основной контент: список ТС -->
+        <main class="content">
+            <div class="page-header">
+                <h1>Транспортные средства</h1>
+                <div class="action-bar">
+                    <!-- Поле поиска -->
+                    <input type="text" id="searchInput" placeholder="Поиск по марке, модели, госномеру, VIN..." class="search-input" value="{{ search_query|default:'' }}">
+
+                    <!-- Фильтр по статусу -->
+                    <select id="statusFilter" class="status-filter">
+                        <option value="">Все статусы</option>
+                        <option value="free" {% if status_filter == 'free' %}selected{% endif %}>Свободен</option>
+                        <option value="on_route" {% if status_filter == 'on_route' %}selected{% endif %}>В рейсе</option>
+                        <option value="on_maintenance" {% if status_filter == 'on_maintenance' %}selected{% endif %}>На ТО</option>
+                    </select>
+
+                    <!-- Кнопка добавления -->
+                    <a href="{% url 'vehicle_add' %}" class="btn-add">+ Добавить ТС</a>
+                </div>
+            </div>
+
+            <!-- Таблица со всеми полями модели Vehicle -->
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Марка</th>
+                            <th>Модель</th>
+                            <th>Госномер</th>
+                            <th>Статус</th>
+                            <th>Текущий пробег (км)</th>
+                            <th>Год выпуска</th>
+                            <th>VIN-номер</th>
+                            <th>Уровень топлива (л)</th>
+                            <th>Широта</th>
+                            <th>Долгота</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vehicle in vehicles %}
+                        <tr>
+                            <td>{{ vehicle.id }}</td>
+                            <td>{{ vehicle.brand }}</td>
+                            <td>{{ vehicle.model }}</td>
+                            <td>{{ vehicle.license_plate }}</td>
+                            <td>
+                                <span class="status-badge status-{{ vehicle.status }}">
+                                    {{ vehicle.get_status_display }}
+                                </span>
+                            </td>
+                            <td>{{ vehicle.current_mileage|default:"—" }}</td>
+                            <td>{{ vehicle.year_of_manufacture }}</td>
+                            <td>{{ vehicle.vin|default:"—" }}</td>
+                            <td>{{ vehicle.fuel_level|default:"—" }}</td>
+                            <td>{{ vehicle.latitude|default:"—" }}</td>
+                            <td>{{ vehicle.longitude|default:"—" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="11" class="empty-row">Нет транспортных средств, соответствующих критериям</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Простейший клиентский поиск и фильтрация (без перезагрузки страницы)
+        // В реальном проекте лучше отправлять GET-запросы на сервер, но для демонстрации шаблона добавим интерактив.
+        // При изменении полей перенаправляем на тот же URL с параметрами запроса.
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
+
+        function updateUrl() {
+            const search = searchInput.value.trim();
+            const status = statusFilter.value;
+            let url = window.location.pathname + '?';
+            if (search) url += `search=${encodeURIComponent(search)}&`;
+            if (status) url += `status=${encodeURIComponent(status)}&`;
+            // убираем последний & или ? если нет параметров
+            if (url.endsWith('&') || url.endsWith('?')) url = url.slice(0, -1);
+            window.location.href = url || window.location.pathname;
+        }
+
+        // События для применения фильтров (можно добавить debounce для поиска)
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') updateUrl();
+        });
+        statusFilter.addEventListener('change', updateUrl);
+    </script>
+</body>
+</html>

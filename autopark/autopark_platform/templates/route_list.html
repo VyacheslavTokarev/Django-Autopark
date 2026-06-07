@@ -1,0 +1,144 @@
+<!-- templates/route_list.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Автопарк - Маршруты</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Боковое меню -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>Автопарк</h2>
+            </div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn active">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+
+        <!-- Основной контент: список маршрутов -->
+        <main class="content">
+            <div class="page-header">
+                <h1>Маршруты</h1>
+                <div class="action-bar">
+                    <!-- Поиск (по точкам отправления/прибытия, водителю, госномеру) -->
+                    <input type="text" id="searchInput" placeholder="Поиск по адресам, водителю, ТС..." class="search-input" value="{{ search_query|default:'' }}">
+
+                    <!-- Фильтр по статусу маршрута -->
+                    <select id="statusFilter" class="status-filter">
+                        <option value="">Все маршруты</option>
+                        <option value="upcoming" {% if route_status == 'upcoming' %}selected{% endif %}>Не начатые</option>
+                        <option value="ongoing" {% if route_status == 'ongoing' %}selected{% endif %}>Выполняющиеся</option>
+                        <option value="completed" {% if route_status == 'completed' %}selected{% endif %}>Завершённые</option>
+                    </select>
+
+                    <!-- Сортировка по дате отправления -->
+                    <select id="sortDate" class="status-filter">
+                        <option value="departure_asc" {% if sort_by == 'departure_asc' %}selected{% endif %}>Дата отправления (по возрастанию)</option>
+                        <option value="departure_desc" {% if sort_by == 'departure_desc' %}selected{% endif %}>Дата отправления (по убыванию)</option>
+                        <option value="distance_asc" {% if sort_by == 'distance_asc' %}selected{% endif %}>Кратчайший путь (по возрастанию)</option>
+                        <option value="distance_desc" {% if sort_by == 'distance_desc' %}selected{% endif %}>Кратчайший путь (по убыванию)</option>
+                    </select>
+
+                    <a href="{% url 'route_add' %}" class="btn-add">+ Добавить маршрут</a>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Отправление (коорд./адрес)</th>
+                            <th>Прибытие (коорд./адрес)</th>
+                            <th>Дата и время отправления</th>
+                            <th>Дата и время прибытия</th>
+                            <th>Кратчайший путь (км)</th>
+                            <th>Фактический путь (км)</th>
+                            <th>Водитель</th>
+                            <th>ТС (госномер)</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for route in routes %}
+                        <tr>
+                            <td>{{ route.id }}</td>
+                            <td>
+                                {{ route.departure_latitude|floatformat:4 }}, {{ route.departure_longitude|floatformat:4 }}<br>
+                                {% if route.departure_address %}<small>{{ route.departure_address }}</small>{% endif %}
+                            </td>
+                            <td>
+                                {{ route.arrival_latitude|floatformat:4 }}, {{ route.arrival_longitude|floatformat:4 }}<br>
+                                {% if route.arrival_address %}<small>{{ route.arrival_address }}</small>{% endif %}
+                            </td>
+                            <td>{{ route.departure_datetime|default:"—" }}</td>
+                            <td>{{ route.arrival_datetime|default:"—" }}</td>
+                            <td>{{ route.shortest_distance_km|default:"—" }}</td>
+                            <td>{{ route.actual_distance_km|default:"—" }}</td>
+                            <td>{{ route.driver.full_name|default:"Не назначен" }}</td>
+                            <td>
+                                {% if route.driver and route.driver.vehicle %}
+                                    {{ route.driver.vehicle.license_plate }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not route.arrival_datetime and route.departure_datetime > now %}
+                                    <span class="status-badge status-upcoming">Не начат</span>
+                                {% elif not route.arrival_datetime and route.departure_datetime <= now %}
+                                    <span class="status-badge status-ongoing">Выполняется</span>
+                                {% elif route.arrival_datetime %}
+                                    <span class="status-badge status-completed">Завершён</span>
+                                {% else %}
+                                    <span class="status-badge">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="empty-row">Нет маршрутов, соответствующих критериям</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
+        const sortDate = document.getElementById('sortDate');
+
+        function updateUrl() {
+            const search = searchInput.value.trim();
+            const status = statusFilter.value;
+            const sort = sortDate.value;
+            let url = window.location.pathname + '?';
+            if (search) url += `search=${encodeURIComponent(search)}&`;
+            if (status) url += `route_status=${encodeURIComponent(status)}&`;
+            if (sort) url += `sort_by=${encodeURIComponent(sort)}&`;
+            if (url.endsWith('&') || url.endsWith('?')) url = url.slice(0, -1);
+            window.location.href = url || window.location.pathname;
+        }
+
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') updateUrl();
+        });
+        statusFilter.addEventListener('change', updateUrl);
+        sortDate.addEventListener('change', updateUrl);
+    </script>
+</body>
+</html>

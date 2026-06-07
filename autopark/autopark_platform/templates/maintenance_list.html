@@ -1,0 +1,151 @@
+<!-- templates/maintenance_list.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Автопарк - Техническое обслуживание</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Боковое меню -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>Автопарк</h2>
+            </div>
+            <nav class="tabs-nav">
+                <a href="{% url 'dashboard' %}" class="tab-btn">Дашборд</a>
+                <a href="{% url 'vehicle_list' %}" class="tab-btn">Весь транспорт</a>
+                <a href="{% url 'driver_list' %}" class="tab-btn">Водители</a>
+                <a href="{% url 'route_list' %}" class="tab-btn">Маршруты</a>
+                <a href="{% url 'refuel_list' %}" class="tab-btn">Информация о заправках</a>
+                <a href="{% url 'maintenance_list' %}" class="tab-btn active">Техническое обслуживание</a>
+                <a href="{% url 'telemetry' %}" class="tab-btn">Телематика</a>
+            </nav>
+        </aside>
+
+        <!-- Основной контент -->
+        <main class="content">
+            <div class="page-header">
+                <h1>Техническое обслуживание</h1>
+                <div class="action-bar">
+                    <!-- Поиск по описанию, госномеру, марке -->
+                    <input type="text" id="searchInput" placeholder="Поиск по ТС, описанию..." class="search-input" value="{{ search_query|default:'' }}">
+
+                    <!-- Фильтр: тип фильтрации -->
+                    <select id="maintenanceFilter" class="status-filter">
+                        <option value="all" {% if maintenance_filter == 'all' %}selected{% endif %}>Все записи ТО</option>
+                        <option value="needed_now" {% if maintenance_filter == 'needed_now' %}selected{% endif %}>ТС, которым нужно ТО прямо сейчас</option>
+                        <option value="due_by_date" {% if maintenance_filter == 'due_by_date' %}selected{% endif %}>ТО по дате (скоро)</option>
+                        <option value="due_by_mileage" {% if maintenance_filter == 'due_by_mileage' %}selected{% endif %}>ТО по пробегу (скоро)</option>
+                        <option value="ongoing" {% if maintenance_filter == 'ongoing' %}selected{% endif %}>ТС на ТО (без даты окончания)</option>
+                        <option value="by_vehicle" {% if maintenance_filter == 'by_vehicle' %}selected{% endif %}>Конкретное ТС</option>
+                    </select>
+
+                    <!-- Выбор конкретного ТС (появляется при фильтре by_vehicle) -->
+                    <select id="vehicleSelect" class="status-filter" style="{% if maintenance_filter != 'by_vehicle' %}display:none;{% endif %}">
+                        <option value="">Выберите ТС</option>
+                        {% for vehicle in vehicles_for_filter %}
+                            <option value="{{ vehicle.id }}" {% if selected_vehicle_id == vehicle.id|stringformat:"i" %}selected{% endif %}>
+                                {{ vehicle.brand }} {{ vehicle.model }} ({{ vehicle.license_plate }})
+                            </option>
+                        {% endfor %}
+                    </select>
+
+                    <!-- Кнопка добавления -->
+                    <a href="{% url 'maintenance_add' %}" class="btn-add">+ Добавить ТО</a>
+                </div>
+            </div>
+
+            <!-- Таблица записей ТО -->
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Транспортное средство</th>
+                            <th>Дата и время начала</th>
+                            <th>Дата и время окончания</th>
+                            <th>Описание</th>
+                            <th>Стоимость (₽)</th>
+                            <th>Пробег на момент ТО (км)</th>
+                            <th>Дата следующего ТО</th>
+                            <th>Пробег для следующего ТО (км)</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for maintenance in maintenances %}
+                        <tr>
+                            <td>{{ maintenance.id }}</td>
+                            <td>
+                                {{ maintenance.vehicle.brand }} {{ maintenance.vehicle.model }}<br>
+                                <small>{{ maintenance.vehicle.license_plate }}</small>
+                            </td>
+                            <td>{{ maintenance.start_datetime }}</td>
+                            <td>{{ maintenance.end_datetime|default:"—" }}</td>
+                            <td>{{ maintenance.description|truncatechars:50|default:"—" }}</td>
+                            <td>{{ maintenance.cost|default:"—" }}</td>
+                            <td>{{ maintenance.mileage_at_service|default:"—" }}</td>
+                            <td>{{ maintenance.next_maintenance_date|default:"—" }}</td>
+                            <td>{{ maintenance.next_maintenance_mileage|default:"—" }}</td>
+                            <td>
+                                {% if not maintenance.end_datetime %}
+                                    <span class="status-badge status-ongoing-maintenance">На ТО</span>
+                                {% else %}
+                                    <span class="status-badge status-completed-maintenance">Завершено</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="empty-row">Нет записей ТО, соответствующих критериям</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const maintenanceFilter = document.getElementById('maintenanceFilter');
+        const vehicleSelect = document.getElementById('vehicleSelect');
+
+        function toggleVehicleSelect() {
+            const isByVehicle = maintenanceFilter.value === 'by_vehicle';
+            vehicleSelect.style.display = isByVehicle ? 'inline-block' : 'none';
+        }
+
+        function updateUrl() {
+            const search = searchInput.value.trim();
+            const filter = maintenanceFilter.value;
+            let vehicleId = '';
+            if (filter === 'by_vehicle') {
+                vehicleId = vehicleSelect.value;
+            }
+            let url = window.location.pathname + '?';
+            if (search) url += `search=${encodeURIComponent(search)}&`;
+            if (filter && filter !== 'all') url += `maintenance_filter=${encodeURIComponent(filter)}&`;
+            if (vehicleId) url += `vehicle_id=${encodeURIComponent(vehicleId)}&`;
+            if (url.endsWith('&') || url.endsWith('?')) url = url.slice(0, -1);
+            window.location.href = url || window.location.pathname;
+        }
+
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') updateUrl();
+        });
+        maintenanceFilter.addEventListener('change', function() {
+            toggleVehicleSelect();
+            updateUrl();
+        });
+        vehicleSelect.addEventListener('change', updateUrl);
+
+        // начальная настройка видимости
+        toggleVehicleSelect();
+    </script>
+</body>
+</html>
