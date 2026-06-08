@@ -7,6 +7,20 @@
     <title>Добавить транспортное средство</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <style>
+        /* Адаптив для форм добавления: группировка полей при маленькой ширине экрана */
+        @media (max-width: 800px) {
+            .form-grid {
+                grid-template-columns: 1fr !important;
+                gap: 1rem;
+            }
+            .field-group input,
+            .field-group select,
+            .field-group textarea {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">

@@ -1,6 +1,7 @@
 // static/js/telemetry.js
 let map;
-let currentRouteLayer = null;
+let routingControl = null;
+let currentVehicleId = null;
 
 const DEFAULT_CENTER = [45.0355, 38.975];
 const DEFAULT_ZOOM = 12;
@@ -36,33 +37,41 @@ function getIconByStatus(status) {
     return icons[status] || icons['free'];
 }
 
-async function drawRoute(startLat, startLng, endLat, endLng, isActive = false) {
-    if (currentRouteLayer) {
-        map.removeLayer(currentRouteLayer);
-        currentRouteLayer = null;
+function drawRoute(startLat, startLng, endLat, endLng, isActive = false) {
+    console.log('drawRoute вызван', startLat, startLng, endLat, endLng, isActive);
+
+    // Удаляем предыдущий маршрут
+    if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
     }
-    const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.code === 'Ok' && data.routes.length > 0) {
-            const geojson = data.routes[0].geometry;
-            const routeStyle = {
-                color: isActive ? '#ff5722' : '#2c7da0',  // активный – оранжевый, будущий – синий
-                weight: 4,
-                opacity: 0.8
-            };
-            currentRouteLayer = L.geoJSON(geojson, {
-                style: routeStyle
-            }).addTo(map);
-            const bounds = L.latLngBounds([startLat, startLng], [endLat, endLng]);
-            map.fitBounds(bounds, { padding: [30, 30] });
-        } else {
-            console.warn('Маршрут не найден');
+
+    // Показываем контейнер
+    const container = document.getElementById('routingContainer');
+    if (container) container.style.display = 'block';
+
+    // Создаём панель маршрута
+    routingControl = L.Routing.control({
+        waypoints: [
+            L.latLng(startLat, startLng),
+            L.latLng(endLat, endLng)
+        ],
+        routeWhileDragging: false,
+        show: true,
+        collapsible: true,
+        fitSelectedRoutes: false,
+        lineOptions: {
+            styles: [{ color: isActive ? '#ff5722' : '#2c7da0', weight: 4, opacity: 0.8 }]
         }
-    } catch (error) {
-        console.error('Ошибка запроса маршрута:', error);
-    }
+    }).addTo(map);
+
+    // Дополнительно: принудительно показываем контейнер, если плагин его не создал
+    setTimeout(() => {
+        const dynamicContainer = document.querySelector('.leaflet-routing-container');
+        if (dynamicContainer && container !== dynamicContainer) {
+            dynamicContainer.style.display = 'block';
+        }
+    }, 100);
 }
 
 function sendNewCoordinates(vehicleId, lat, lng) {
@@ -89,7 +98,6 @@ function sendNewCoordinates(vehicleId, lat, lng) {
     .catch(error => console.error('AJAX error:', error));
 }
 
-// Вспомогательная функция для получения CSRF-токена из куки
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -114,9 +122,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     vehiclesData.forEach(vehicle => {
+        // Проверка, есть ли координаты
+        if (!vehicle.latitude || !vehicle.longitude) {
+            console.warn(`ТС ${vehicle.id} не имеет координат`);
+            return;
+        }
+
         const marker = L.marker([vehicle.latitude, vehicle.longitude], {
             icon: getIconByStatus(vehicle.status),
-            draggable: true   // разрешаем перетаскивание
+            draggable: true
         }).addTo(map);
 
         marker.on('dragend', function(event) {
@@ -133,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${vehicle.driver_name ? `Водитель: ${vehicle.driver_name}` : ''}
         `;
 
-        if (vehicle.next_route && vehicle.next_route.departure_datetime) {
+        if (vehicle.next_route && vehicle.next_route.departure_lat) {
             const routeType = vehicle.next_route.is_active ? 'Текущий маршрут (в рейсе)' : 'Ближайший маршрут';
             const routeDate = new Date(vehicle.next_route.departure_datetime).toLocaleString();
             popupContent += `<br><hr><small>${routeType}: ${routeDate}</small>`;
@@ -141,19 +155,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         marker.bindPopup(popupContent);
 
-        marker.on('popupopen', async () => {
+        marker.on('popupopen', () => {
+            console.log('popupopen для ТС', vehicle.id, vehicle.next_route);
             if (vehicle.next_route && vehicle.next_route.departure_lat && vehicle.next_route.departure_lng &&
                 vehicle.next_route.arrival_lat && vehicle.next_route.arrival_lng) {
-                // Передаём флаг is_active, чтобы нарисовать маршрут другим цветом
-                await drawRoute(
+                drawRoute(
                     vehicle.next_route.departure_lat,
                     vehicle.next_route.departure_lng,
                     vehicle.next_route.arrival_lat,
                     vehicle.next_route.arrival_lng,
-                    vehicle.next_route.is_active
+                    vehicle.next_route.is_active || false
                 );
             } else {
-                if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+                console.warn('Нет route_info для ТС, панель не появится');
+                // Если маршрута нет – скрываем контейнер
+                const container = document.getElementById('routingContainer');
+                if (container) container.style.display = 'none';
+                if (routingControl) {
+                    map.removeControl(routingControl);
+                    routingControl = null;
+                }
                 map.setView([vehicle.latitude, vehicle.longitude], 14);
             }
         });

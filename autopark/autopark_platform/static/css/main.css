@@ -544,3 +544,7 @@ button[type="submit"]:hover {
 .leaflet-popup-content strong {
     color: #1f2b38;
 }
+
+.leaflet-routing-container {
+    z-index: 1000;
+}

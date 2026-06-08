@@ -1,4 +1,5 @@
 import json
+import math
 import random
 
 from django.views.decorators.http import require_POST
@@ -403,47 +404,17 @@ def maintenance_list(request):
     }
     return render(request, 'maintenance_list.html', context)
 
+
 def telemetry(request):
     now = timezone.now()
 
-    # Подзапрос имени водителя
+    # Подзапрос для получения имени водителя (без обращения к v.driver)
     driver_name_subquery = Driver.objects.filter(
         vehicle=OuterRef('pk')
     ).values('full_name')[:1]
 
-    # Подзапрос активного маршрута (для ТС в рейсе)
-    active_route_subquery = Route.objects.filter(
-        driver__vehicle=OuterRef('pk'),
-        departure_datetime__lte=now,
-        arrival_datetime__isnull=True
-    ).order_by('departure_datetime').values(
-        'departure_latitude', 'departure_longitude',
-        'arrival_latitude', 'arrival_longitude',
-        'departure_datetime'
-    )[:1]
-
-    # Подзапрос ближайшего будущего маршрута (для свободных / на ТО)
-    future_route_subquery = Route.objects.filter(
-        driver__vehicle=OuterRef('pk'),
-        departure_datetime__gte=now
-    ).order_by('departure_datetime').values(
-        'departure_latitude', 'departure_longitude',
-        'arrival_latitude', 'arrival_longitude',
-        'departure_datetime'
-    )[:1]
-
     vehicles = Vehicle.objects.annotate(
-        driver_name=Subquery(driver_name_subquery, output_field=CharField()),
-        active_dep_lat=Subquery(active_route_subquery.values('departure_latitude')[:1], output_field=CharField()),
-        active_dep_lng=Subquery(active_route_subquery.values('departure_longitude')[:1], output_field=CharField()),
-        active_arr_lat=Subquery(active_route_subquery.values('arrival_latitude')[:1], output_field=CharField()),
-        active_arr_lng=Subquery(active_route_subquery.values('arrival_longitude')[:1], output_field=CharField()),
-        active_dep_datetime=Subquery(active_route_subquery.values('departure_datetime')[:1], output_field=CharField()),
-        future_dep_lat=Subquery(future_route_subquery.values('departure_latitude')[:1], output_field=CharField()),
-        future_dep_lng=Subquery(future_route_subquery.values('departure_longitude')[:1], output_field=CharField()),
-        future_arr_lat=Subquery(future_route_subquery.values('arrival_latitude')[:1], output_field=CharField()),
-        future_arr_lng=Subquery(future_route_subquery.values('arrival_longitude')[:1], output_field=CharField()),
-        future_dep_datetime=Subquery(future_route_subquery.values('departure_datetime')[:1], output_field=CharField()),
+        driver_name=Subquery(driver_name_subquery, output_field=CharField())
     ).all()
 
     vehicles_data = []
@@ -451,29 +422,34 @@ def telemetry(request):
         lat = v.latitude if v.latitude is not None else 45.0355
         lng = v.longitude if v.longitude is not None else 38.975
 
-        # Для каждого ТС определяем, какой маршрут показывать
-        if v.status == Vehicle.Status.ON_ROUTE and v.active_dep_lat:
-            # Если ТС в рейсе и есть активный маршрут – показываем его
+        # Поиск маршрута: через водителя, связанного с этим ТС
+        # Сначала ищем водителя, который привязан к текущему ТС
+        driver = Driver.objects.filter(vehicle=v).first()
+        route = None
+        if driver:
+            # Активный маршрут (в рейсе)
+            route = Route.objects.filter(
+                driver=driver,
+                departure_datetime__lte=now,
+                arrival_datetime__isnull=True
+            ).order_by('departure_datetime').first()
+            # Если нет активного – ближайший будущий
+            if not route:
+                route = Route.objects.filter(
+                    driver=driver,
+                    departure_datetime__gte=now
+                ).order_by('departure_datetime').first()
+
+        route_info = None
+        if route:
             route_info = {
-                'departure_lat': float(v.active_dep_lat),
-                'departure_lng': float(v.active_dep_lng),
-                'arrival_lat': float(v.active_arr_lat),
-                'arrival_lng': float(v.active_arr_lng),
-                'departure_datetime': v.active_dep_datetime,
-                'is_active': True
+                'departure_lat': route.departure_latitude,
+                'departure_lng': route.departure_longitude,
+                'arrival_lat': route.arrival_latitude,
+                'arrival_lng': route.arrival_longitude,
+                'departure_datetime': route.departure_datetime.isoformat(),
+                'is_active': (route.arrival_datetime is None and route.departure_datetime <= now)
             }
-        elif v.future_dep_lat:
-            # Иначе показываем ближайший будущий маршрут (если есть)
-            route_info = {
-                'departure_lat': float(v.future_dep_lat),
-                'departure_lng': float(v.future_dep_lng),
-                'arrival_lat': float(v.future_arr_lat),
-                'arrival_lng': float(v.future_arr_lng),
-                'departure_datetime': v.future_dep_datetime,
-                'is_active': False
-            }
-        else:
-            route_info = None
 
         vehicles_data.append({
             'id': v.id,
@@ -486,29 +462,91 @@ def telemetry(request):
             'fuel_level': v.fuel_level,
             'latitude': lat,
             'longitude': lng,
-            'driver_name': v.driver_name,
+            'driver_name': v.driver_name,  # Из аннотации, безопасно
             'next_route': route_info,
         })
 
     vehicles_json = json.dumps(vehicles_data, ensure_ascii=False, default=str)
     return render(request, 'telemetry.html', {'vehicles_json': vehicles_json})
+def haversine(lat1, lon1, lat2, lon2):
+    """Расстояние между двумя точками в км (формула гаверсинуса)"""
+    R = 6371  # радиус Земли в км
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    c = 2*math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
 
-@csrf_exempt   # Для простоты; в production лучше использовать @csrf_protect с передачей токена
+@csrf_exempt
 @require_POST
 def update_vehicle_location(request):
     try:
         data = json.loads(request.body)
         vehicle_id = data.get('vehicle_id')
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
+        new_lat = data.get('latitude')
+        new_lng = data.get('longitude')
 
-        if not all([vehicle_id, latitude is not None, longitude is not None]):
+        if not all([vehicle_id, new_lat is not None, new_lng is not None]):
             return JsonResponse({'status': 'error', 'message': 'Missing fields'}, status=400)
 
         vehicle = Vehicle.objects.get(id=vehicle_id)
-        vehicle.latitude = latitude
-        vehicle.longitude = longitude
+        old_lat = vehicle.latitude
+        old_lng = vehicle.longitude
+
+        # Определяем, какой маршрут сейчас актуален для этого ТС (аналогично telemetry)
+        now = timezone.now()
+        # Активный маршрут (в рейсе, не завершён)
+        active_route = Route.objects.filter(
+            driver__vehicle=vehicle,
+            departure_datetime__lte=now,
+            arrival_datetime__isnull=True
+        ).order_by('departure_datetime').first()
+
+        # Если нет активного – берём ближайший будущий
+        if not active_route:
+            active_route = Route.objects.filter(
+                driver__vehicle=vehicle,
+                departure_datetime__gte=now
+            ).order_by('departure_datetime').first()
+
+        # Обновляем координаты ТС
+        vehicle.latitude = new_lat
+        vehicle.longitude = new_lng
         vehicle.save(update_fields=['latitude', 'longitude'])
+
+        # Если есть маршрут и это не будущий (или можно и для будущего, но логичнее для активного)
+        if active_route:
+            track = active_route.actual_track
+            if track is None:
+                track = []
+            elif isinstance(track, str):
+                track = json.loads(track)
+            # Последняя точка трека
+            last_point = track[-1] if track else None
+
+            # Вычисляем пройденное расстояние от последней точки
+            if last_point and 'lat' in last_point and 'lng' in last_point:
+                dist = haversine(last_point['lat'], last_point['lng'], new_lat, new_lng)
+                new_distance = last_point.get('distance_from_start', 0) + dist
+            else:
+                dist = 0
+                new_distance = 0
+
+            # Добавляем новую точку
+            new_point = {
+                'lat': new_lat,
+                'lng': new_lng,
+                'timestamp': timezone.now().isoformat(),
+                'distance_from_start': round(new_distance, 3)
+            }
+            track.append(new_point)
+            active_route.actual_track = track
+            # Также обновляем фактическое пройденное расстояние в маршруте
+            active_route.actual_distance_km = round(new_distance, 3)
+            active_route.save(update_fields=['actual_track', 'actual_distance_km'])
+
         return JsonResponse({'status': 'ok'})
     except Vehicle.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Vehicle not found'}, status=404)
