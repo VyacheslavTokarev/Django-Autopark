@@ -1,15 +1,14 @@
 import json
-import random
+import math
 
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render, redirect
-from django.db.models import Q, F, DecimalField, Count, Sum, Max, OuterRef, Subquery, FloatField, Value, IntegerField, CharField
+from django.db.models import Q, F, DecimalField, Sum, Max, OuterRef, Subquery, FloatField, Value, CharField
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.contrib import messages
-from django.utils.timezone import localtime
 from .models import Vehicle, Driver, Route, FuelLog, Maintenance
 
 from datetime import timedelta
@@ -493,22 +492,85 @@ def telemetry(request):
     vehicles_json = json.dumps(vehicles_data, ensure_ascii=False, default=str)
     return render(request, 'telemetry.html', {'vehicles_json': vehicles_json})
 
-@csrf_exempt   # Для простоты; в production лучше использовать @csrf_protect с передачей токена
+def haversine(lat1, lon1, lat2, lon2):
+    """Расстояние между двумя точками в км (формула гаверсинуса)"""
+    R = 6371  # радиус Земли в км
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    c = 2*math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
+
+@csrf_exempt
 @require_POST
 def update_vehicle_location(request):
     try:
         data = json.loads(request.body)
         vehicle_id = data.get('vehicle_id')
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
+        new_lat = data.get('latitude')
+        new_lng = data.get('longitude')
 
-        if not all([vehicle_id, latitude is not None, longitude is not None]):
+        if not all([vehicle_id, new_lat is not None, new_lng is not None]):
             return JsonResponse({'status': 'error', 'message': 'Missing fields'}, status=400)
 
         vehicle = Vehicle.objects.get(id=vehicle_id)
-        vehicle.latitude = latitude
-        vehicle.longitude = longitude
+        old_lat = vehicle.latitude
+        old_lng = vehicle.longitude
+
+        # Определяем, какой маршрут сейчас актуален для этого ТС (аналогично telemetry)
+        now = timezone.now()
+        # Активный маршрут (в рейсе, не завершён)
+        active_route = Route.objects.filter(
+            driver__vehicle=vehicle,
+            departure_datetime__lte=now,
+            arrival_datetime__isnull=True
+        ).order_by('departure_datetime').first()
+
+        # Если нет активного – берём ближайший будущий
+        if not active_route:
+            active_route = Route.objects.filter(
+                driver__vehicle=vehicle,
+                departure_datetime__gte=now
+            ).order_by('departure_datetime').first()
+
+        # Обновляем координаты ТС
+        vehicle.latitude = new_lat
+        vehicle.longitude = new_lng
         vehicle.save(update_fields=['latitude', 'longitude'])
+
+        # Если есть маршрут и это не будущий (или можно и для будущего, но логичнее для активного)
+        if active_route:
+            track = active_route.actual_track
+            if track is None:
+                track = []
+            elif isinstance(track, str):
+                track = json.loads(track)
+            # Последняя точка трека
+            last_point = track[-1] if track else None
+
+            # Вычисляем пройденное расстояние от последней точки
+            if last_point and 'lat' in last_point and 'lng' in last_point:
+                dist = haversine(last_point['lat'], last_point['lng'], new_lat, new_lng)
+                new_distance = last_point.get('distance_from_start', 0) + dist
+            else:
+                dist = 0
+                new_distance = 0
+
+            # Добавляем новую точку
+            new_point = {
+                'lat': new_lat,
+                'lng': new_lng,
+                'timestamp': timezone.now().isoformat(),
+                'distance_from_start': round(new_distance, 3)
+            }
+            track.append(new_point)
+            active_route.actual_track = track
+            # Также обновляем фактическое пройденное расстояние в маршруте
+            active_route.actual_distance_km = round(new_distance, 3)
+            active_route.save(update_fields=['actual_track', 'actual_distance_km'])
+
         return JsonResponse({'status': 'ok'})
     except Vehicle.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Vehicle not found'}, status=404)
